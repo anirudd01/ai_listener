@@ -41,7 +41,7 @@ class OpenAITTSService:
             raise ValueError("OpenAI client is not initialized. Check OPENAI_API_KEY.")
 
         start_time = time.time()
-        self.logger.info(f"Generating TTS speech for {len(text)} characters using model '{self.model}', voice '{self.voice}'...")
+        self.logger.info(f"Generating TTS speech for {len(text)} characters using model '{self.model}'")
 
         try:
             response = self.client.audio.speech.create(
@@ -77,7 +77,7 @@ class OpenAITTSService:
                 duration_sec=duration_sec,
                 cache_hit=False
             )
-
+            
             self.logger.info(f"TTS synthesis completed in {duration_sec:.2f}s ({file_size} bytes).")
             return output_path
 

@@ -3,6 +3,7 @@
 import sys
 import os
 import signal
+import ctypes
 import tkinter as tk
 from tkinter import messagebox
 from dotenv import load_dotenv
@@ -19,6 +20,22 @@ from utils.config_loader import load_config
 from utils.logger import setup_logging, get_logger
 from workers.pipeline import PipelineManager
 
+_SINGLE_INSTANCE_MUTEX_NAME = "Global\\AIListenerSingleInstanceMutex"
+_mutex_handle = (
+    None  # module-level so the handle (and lock) survives for the process lifetime
+)
+
+
+def acquire_single_instance_lock() -> bool:
+    """Claims a named Windows mutex so double-clicking the launcher can't spawn duplicate instances."""
+    global _mutex_handle
+    ERROR_ALREADY_EXISTS = 183
+    _mutex_handle = ctypes.windll.kernel32.CreateMutexW(
+        None, False, _SINGLE_INSTANCE_MUTEX_NAME
+    )
+    return ctypes.windll.kernel32.GetLastError() != ERROR_ALREADY_EXISTS
+
+
 def show_error_notification(title: str, message: str) -> None:
     """Displays a graphical error message box if UI subsystem is available."""
     try:
@@ -32,10 +49,22 @@ def show_error_notification(title: str, message: str) -> None:
     except Exception:
         pass
 
+
 def main() -> None:
     """Bootstraps application, validates API access, starts background workers, and launches UI."""
     config = load_config()
     logger, _ = setup_logging(config.log_dir)
+
+    if not acquire_single_instance_lock():
+        logger.info(
+            "Another AI Listener instance is already running; exiting this launch."
+        )
+        show_error_notification(
+            "AI Listener",
+            "AI Listener is already running.\nCheck your system tray icon.",
+        )
+        sys.exit(0)
+
     logger.info("Starting AI Listener Desktop Application...")
 
     if not config.openai_api_key or config.openai_api_key == "your-openai-api-key-here":
@@ -48,26 +77,16 @@ def main() -> None:
         api_key=config.openai_api_key,
         model=config.active_model,
         voice=config.ai_voice,
-        speed=config.tts_speed
+        speed=config.tts_speed,
     )
 
-    logger.info("Validating OpenAI API Key on startup...")
-    if not tts_service.validate_api_key():
-        error_msg = "Failed to validate OpenAI API key. Check your network or API permissions."
-        logger.error(error_msg)
-        show_error_notification("AI Listener - API Key Error", error_msg)
-        sys.exit(1)
-
-    # Initialize streaming pipeline and clipboard monitor
+    # Construction is cheap and local; .start() (workers/network) is deferred until the tray icon is visible
     pipeline = PipelineManager(config=config, tts_service=tts_service)
-    pipeline.start()
-
     clipboard_monitor = ClipboardMonitor(
         on_text_copied=pipeline.process_new_clipboard_text,
         min_length=config.min_text_length,
-        poll_interval=1.0
+        poll_interval=1.0,
     )
-    clipboard_monitor.start()
 
     def shutdown() -> None:
         """Handles clean application shutdown across all background services."""
@@ -93,16 +112,35 @@ def main() -> None:
         on_skip_document=pipeline.skip_current_document,
         on_stop_audio=pipeline.stop_everything,
         on_replay_document=pipeline.replay_current_document,
-        on_exit=shutdown
+        on_exit=shutdown,
     )
 
+    def run_startup_sequence(app: SystemTrayApp) -> None:
+        """Runs the slow, network-bound startup work in the background, after the icon is already visible."""
+        app.notify("Starting up - validating API key...")
+        logger.info("Validating OpenAI API Key on startup...")
+        if not tts_service.validate_api_key():
+            error_msg = "Failed to validate OpenAI API key. Check your network or API permissions."
+            logger.error(error_msg)
+            app.notify(error_msg, title="AI Listener - API Key Error")
+            app.stop()
+            return
+
+        pipeline.start()
+        clipboard_monitor.start()
+        app.set_title("AI Listener - Active")
+        app.notify("AI Listener is ready and monitoring your clipboard.")
+        logger.info(
+            "AI Listener is actively monitoring clipboard and running in system tray."
+        )
+
     try:
-        logger.info("AI Listener is actively monitoring clipboard and running in system tray.")
-        tray_app.run()
+        tray_app.run(on_ready=run_startup_sequence)
     except KeyboardInterrupt:
         pass
     finally:
         shutdown()
+
 
 if __name__ == "__main__":
     main()
