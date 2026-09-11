@@ -21,20 +21,14 @@ from utils.logger import setup_logging, get_logger
 from workers.pipeline import PipelineManager
 
 _SINGLE_INSTANCE_MUTEX_NAME = "Global\\AIListenerSingleInstanceMutex"
-_mutex_handle = (
-    None  # module-level so the handle (and lock) survives for the process lifetime
-)
-
+_mutex_handle = None  # module-level so the handle (and lock) survives for the process lifetime
 
 def acquire_single_instance_lock() -> bool:
     """Claims a named Windows mutex so double-clicking the launcher can't spawn duplicate instances."""
     global _mutex_handle
     ERROR_ALREADY_EXISTS = 183
-    _mutex_handle = ctypes.windll.kernel32.CreateMutexW(
-        None, False, _SINGLE_INSTANCE_MUTEX_NAME
-    )
+    _mutex_handle = ctypes.windll.kernel32.CreateMutexW(None, False, _SINGLE_INSTANCE_MUTEX_NAME)
     return ctypes.windll.kernel32.GetLastError() != ERROR_ALREADY_EXISTS
-
 
 def show_error_notification(title: str, message: str) -> None:
     """Displays a graphical error message box if UI subsystem is available."""
@@ -49,20 +43,14 @@ def show_error_notification(title: str, message: str) -> None:
     except Exception:
         pass
 
-
 def main() -> None:
     """Bootstraps application, validates API access, starts background workers, and launches UI."""
     config = load_config()
     logger, _ = setup_logging(config.log_dir)
 
     if not acquire_single_instance_lock():
-        logger.info(
-            "Another AI Listener instance is already running; exiting this launch."
-        )
-        show_error_notification(
-            "AI Listener",
-            "AI Listener is already running.\nCheck your system tray icon.",
-        )
+        logger.info("Another AI Listener instance is already running; exiting this launch.")
+        show_error_notification("AI Listener", "AI Listener is already running.\nCheck your system tray icon.")
         sys.exit(0)
 
     logger.info("Starting AI Listener Desktop Application...")
@@ -77,7 +65,7 @@ def main() -> None:
         api_key=config.openai_api_key,
         model=config.active_model,
         voice=config.ai_voice,
-        speed=config.tts_speed,
+        speed=config.tts_speed
     )
 
     # Construction is cheap and local; .start() (workers/network) is deferred until the tray icon is visible
@@ -85,7 +73,7 @@ def main() -> None:
     clipboard_monitor = ClipboardMonitor(
         on_text_copied=pipeline.process_new_clipboard_text,
         min_length=config.min_text_length,
-        poll_interval=1.0,
+        poll_interval=1.0
     )
 
     def shutdown() -> None:
@@ -112,7 +100,7 @@ def main() -> None:
         on_skip_document=pipeline.skip_current_document,
         on_stop_audio=pipeline.stop_everything,
         on_replay_document=pipeline.replay_current_document,
-        on_exit=shutdown,
+        on_exit=shutdown
     )
 
     def run_startup_sequence(app: SystemTrayApp) -> None:
@@ -130,9 +118,7 @@ def main() -> None:
         clipboard_monitor.start()
         app.set_title("AI Listener - Active")
         app.notify("AI Listener is ready and monitoring your clipboard.")
-        logger.info(
-            "AI Listener is actively monitoring clipboard and running in system tray."
-        )
+        logger.info("AI Listener is actively monitoring clipboard and running in system tray.")
 
     try:
         tray_app.run(on_ready=run_startup_sequence)
@@ -140,7 +126,6 @@ def main() -> None:
         pass
     finally:
         shutdown()
-
 
 if __name__ == "__main__":
     main()
