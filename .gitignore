@@ -1,0 +1,8 @@
+.venv
+.venv/
+
+*.mp3
+*/*.mp3
+*/**.mp3
+
+.env
