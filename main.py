@@ -102,6 +102,7 @@ def main() -> None:
         on_replay_document=pipeline.replay_current_document,
         on_exit=shutdown
     )
+    tts_service.notifier = tray_app.notify
 
     def run_startup_sequence(app: SystemTrayApp) -> None:
         """Runs the slow, network-bound startup work in the background, after the icon is already visible."""

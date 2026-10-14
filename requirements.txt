@@ -1,6 +1,6 @@
-openai>=1.0.0
-python-dotenv>=1.0.0
-pyperclip>=1.8.2
-pygame>=2.5.0
+openai>=3.31.0,<4
+python-dotenv>=1.2.4
+pyperclip>=1.11.0
+pygame>=2.6.1
 pystray>=0.19.5
-Pillow>=10.0.0
+Pillow>=12.3.0
